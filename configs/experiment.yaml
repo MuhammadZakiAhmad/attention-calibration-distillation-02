@@ -18,7 +18,22 @@ model:
   # results are cached per record, so if the Colab run and the final reported run
   # used different commits the cache would be invalid and reproducibility broken.
   revision: aa8e72537993ba99e69dfaafa59ed015b17504d1
-  dtype: bfloat16
+  # float16, not bfloat16. The Phase 1 run executes on a Colab Tesla T4
+  # (compute capability 7.5, Turing). bf16 has no hardware support below
+  # compute capability 8.0, so on a T4 every bf16 op falls back to a slow
+  # emulated path — correct results, several times the wall clock, which
+  # matters because a Colab session will not outlive a long run. T4 has real
+  # fp16 tensor cores and this is inference-only (no optimizer, no gradient
+  # scaling needed), so fp16 is both faster and safe.
+  #
+  # Recorded 2026-09-17 as an explicit configuration change per spec section 24.
+  # It must NOT be altered after generation begins: the pairing of dtype and
+  # cached generation is part of what makes the run reproducible.
+  #
+  # Phase 2 note: training on a T4 would additionally need a GradScaler, and
+  # bf16 remains unavailable there. Phase 2 should target a compute capability
+  # >= 8.0 device (L4/A100) rather than inherit this compromise.
+  dtype: float16
   device_map: auto
   # The attention-calibration term is inserted into the raw attention scores, so
   # the scores must actually be materialised. Flash-attention and SDPA never
