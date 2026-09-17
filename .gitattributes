@@ -1,0 +1,6 @@
+# Authored on Windows, executed on Linux (Colab). Normalise line endings in the
+# repository to LF so a clone onto Colab behaves identically to the working copy.
+* text=auto eol=lf
+
+*.png binary
+*.pdf binary

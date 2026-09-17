@@ -1,0 +1,161 @@
+# =============================================================================
+# Attention Calibration Distillation 02 — Experiment Configuration
+#
+# Spec reference: `Attention Calibration Distillation — Three-Phase
+# Experimental Project Specification.md`, section 39 (reproducibility) and
+# section 24 (do not silently change rank, layers, loss, tokenizer, prompt
+# format, dataset condition, or answer mapping between runs).
+#
+# Every value consumed by phase1.py / phase2.py / phase3.py is read from this
+# file. Nothing is hardcoded in the scripts. A change to any value below is a
+# NEW experimental configuration and must be recorded in
+# project_history/project_details.md under "Decisions Made".
+# =============================================================================
+
+model:
+  name: Qwen/Qwen2.5-3B-Instruct
+  # Pinned (spec section 39). Resolved from the Hub API on 2026-09-17. Generation
+  # results are cached per record, so if the Colab run and the final reported run
+  # used different commits the cache would be invalid and reproducibility broken.
+  revision: aa8e72537993ba99e69dfaafa59ed015b17504d1
+  dtype: bfloat16
+  device_map: auto
+  # The attention-calibration term is inserted into the raw attention scores, so
+  # the scores must actually be materialised. Flash-attention and SDPA never
+  # expose them. Eager applies to the target_layers only; the cost is bounded
+  # because the calibrated layers are just the final four.
+  attn_implementation: eager
+
+dataset:
+  name: arqa39/proofwriter-source
+  configuration: CWA-depth-2   # Closed World Assumption, max reasoning depth 2.
+                               # CWA guarantees the answer space is exactly
+                               # {True, False} with no "Unknown" (spec section 5).
+  split: train
+  # Target pool composition (spec section 51).
+  pool_size: 500
+  pool_true: 250
+  pool_false: 250
+  # Only questions requiring at least one inference step are eligible. QDep=0
+  # questions are direct fact lookups that zero-shot Qwen almost always solves,
+  # so they would become Both-Pass records rather than Golden Records.
+  min_qdep: 1
+
+prompt:
+  template_version: p1-v1
+  num_demonstrations: 2
+  # The Teacher and the Student use the SAME chat-template mechanism (spec
+  # section 10). Their only difference is the presence of the demonstration
+  # block. The target's gold answer and gold proof NEVER appear in either
+  # prompt (spec section 4, section 44 Rule 2).
+  system_message: >-
+    You solve logical reasoning problems. Given a set of facts and rules, you
+    reason step by step and then state a final answer of either True or False.
+    Always end your response with a line of the form "Final Answer: True" or
+    "Final Answer: False".
+
+generation:
+  do_sample: false        # Greedy. Spec section 16 requires every generation to
+                          # be cached and section 9 forbids rerunning on parse
+                          # failure; both presuppose deterministic decoding.
+  temperature: 0.0        # Recorded for completeness; inert when do_sample=false.
+  top_p: 1.0              # Recorded for completeness; inert when do_sample=false.
+  max_new_tokens: 512
+  seed: 20260917
+
+parser:
+  version: p1-parse-v1
+  # Binary label mapping ONLY (spec section 26). No generic A/B/C/D index map,
+  # no fallback index, no silent conversion. A response with no parsable final
+  # answer becomes INVALID and counts as incorrect (spec section 9).
+  labels: [True, False]
+  invalid_label: INVALID
+
+training:
+  adapter: hypericl_attention_calibration_plus_lora
+  # Spec section 24 names the historical configuration as the starting point:
+  # rank-32 LoRA on the final four transformer layers. Spec section 52 requires
+  # the HyperICL attention-calibration mechanism to be present and forbids
+  # replacing it with ordinary LoRA. Session 1 decision: both, together.
+  rank: 32
+  lora_alpha: 64
+  lora_dropout: 0.05
+  target_layers: [32, 33, 34, 35]   # final four of Qwen2.5-3B's 36 layers
+                                    # (verified against the model config, not assumed)
+  calibration:
+    # S' = S + g * delta ; delta = A @ B.T ; A = Q @ Uq ; B = K @ Uk
+    # g = sigmoid(MLP(Q))              (spec section 23, section 52)
+    rank: 32
+    gate_hidden: 64
+    # Frozen 2026-09-17 (spec section 21, section 24). Determines which Teacher
+    # hidden states are cached, so it must not move after extraction begins.
+    # Set equal to target_layers: the distillation objective is exactly what the
+    # calibrated layers produce, so only those four layers are cached — which is
+    # what section 21 asks for ("do not cache unnecessary full-model activations").
+    distill_layers: [32, 33, 34, 35]
+    # Uq and Uk are zero-initialised so delta == 0 at step 0 and the calibrated
+    # model is bit-identical to the base model before training. Phase 3's baseline
+    # comparison depends on that.
+    init: zeros
+    # Applied to post-RoPE Q and K. The additive term must live in the same units
+    # as S, and Qwen scales Q before the score matmul, so Uq consumes *scaled* Q.
+    # Otherwise delta is off by sqrt(head_dim) and Uq silently absorbs the constant.
+    rope_space: post
+    # GQA: 16 query heads, 2 key/value heads, head_dim 128 (verified against the
+    # model config, 2026-09-17). K @ Uk is computed at the 2 KV heads and only the
+    # rank-32 result is repeated to 16, instead of repeating K first — an 8x saving
+    # on that matmul with an arithmetically identical result, because Uk is shared
+    # within a KV group by construction.
+    gqa_strategy: repeat_rank_not_k
+  learning_rate: 2.0e-4
+  epochs: 3
+  batch_size: 1
+  gradient_accumulation: 8
+  # L = ce_weight * L_CE + mse_weight * L_MSE            (spec section 25)
+  #
+  # L_CE target: the Teacher's FULL generated output (reasoning + final answer),
+  # prompt tokens masked out. Spec section 20 names "teacher reasoning" and
+  # "teacher final answer" as the Teacher target-side outputs, so the whole chain
+  # is the target. Carried risk, recorded deliberately: a Golden Record guarantees
+  # the Teacher's *answer* is correct, not that its *reasoning* is. Distilling a
+  # plausible but wrong chain is the silent-wrong failure mode this project has
+  # already been bitten by once. If Phase 3 shows the calibrated model producing
+  # confident nonsense, this choice is the first suspect.
+  ce_target: teacher_full_output
+  # L_MSE alignment: target-block token positions only. The Teacher prompt carries
+  # two demonstrations and the Student prompt does not, but the target block is
+  # byte-identical in both (deliberate, see prompt construction in phase1.py).
+  # Spec section 22 requires the mapping be derived by token identity, never by a
+  # hardcoded offset. Note the two full sequences also share the system block at
+  # the front, so the alignment window must be restricted to the target region and
+  # asserted on — a naive LCS over the whole sequence would return both.
+  mse_positions: target_block_only
+  ce_weight: 1.0
+  mse_weight: 0.5
+
+evaluation:
+  parser_version: p1-parse-v1
+  # Split Golden Records by theory ID, not question ID (spec section 18).
+  split_by: theory_id
+  golden_train_frac: 0.7
+  golden_validation_frac: 0.15
+  golden_test_frac: 0.15
+  split_seed: 20260917
+
+paths:
+  # Artifact root. Overridden by the ACD_ROOT environment variable so the same
+  # code runs locally and in Colab (spec section 54). In Colab set
+  #   export ACD_ROOT=/content/drive/MyDrive/acd02
+  # Colab's local filesystem is temporary; only ACD_ROOT is persistent.
+  root_env_var: ACD_ROOT
+  default_root: .
+  pool: data/phase1/pool.jsonl
+  demonstrations: data/demonstrations/demonstrations.json
+  raw_zero_shot: results/phase1/raw/zero_shot.jsonl
+  raw_few_shot: results/phase1/raw/few_shot.jsonl
+  all_records: results/phase1/all_records.jsonl
+  golden_records: results/phase1/golden_records.jsonl
+  both_failed: results/phase1/both_failed.jsonl
+  both_passed: results/phase1/both_passed.jsonl
+  regressions: results/phase1/regressions.jsonl
+  phase1_config: results/phase1/phase1_config.json

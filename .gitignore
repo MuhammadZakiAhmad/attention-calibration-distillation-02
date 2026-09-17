@@ -1,0 +1,29 @@
+# Artifacts are data, not code. The authoritative copies live in Google Drive
+# (spec section 54). Never commit generated outputs.
+results/
+data/phase1/
+data/phase2/
+data/processed/
+logs/
+*.jsonl
+
+# Checkpoints can be gigabytes.
+phase2/checkpoints/
+*.safetensors
+*.bin
+
+# Large source material.
+HyperICL.pdf
+
+# Agent tooling lives in this folder but is not part of the experiment. It is
+# shared across every project and would drift out of sync if versioned here.
+.claude/skills/
+.claude/settings.local.json
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.ipynb_checkpoints/
+.DS_Store

@@ -1,0 +1,11 @@
+# Attention Calibration Distillation 02 — Phase 1 dependencies
+#
+# Colab already ships torch/transformers/datasets. Pinning here documents the
+# versions used for the reported run (spec section 39).
+torch>=2.5.0
+transformers>=4.47.0
+datasets>=3.0.0
+accelerate>=1.0.0
+peft>=0.13.0
+pyyaml>=6.0
+tqdm>=4.66.0

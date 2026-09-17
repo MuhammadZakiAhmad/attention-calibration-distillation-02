@@ -1,0 +1,49 @@
+{
+  "demonstrations": [
+    {
+      "theory_id": "AttNeg-CWA-D2-1001",
+      "question_key": "Q3",
+      "id": "AttNeg-CWA-D2-1001::Q3",
+      "context": "Bob is green. Erin is red. Erin is white. Fiona is cold. Fiona is furry. Fiona is nice. Harry is white. All nice things are furry. If something is furry then it is nice. If Harry is white and Harry is not red then Harry is furry.",
+      "question": "Harry is furry.",
+      "gold_answer": "True",
+      "gold_proof": "From \"Harry is white and Harry is not red\" and the rule \"If Harry is white and Harry is not red then Harry is furry\", we can conclude Harry is furry.\nTherefore, Harry is furry.",
+      "reasoning_depth": 1,
+      "strategy": "proof",
+      "render_meta": {
+        "strategy": "proof",
+        "qdep": 1,
+        "proof_index": 0,
+        "num_alternatives": 1,
+        "num_steps": 1,
+        "conclusion": "Harry is furry."
+      }
+    },
+    {
+      "theory_id": "AttNeg-CWA-D2-1002",
+      "question_key": "Q4",
+      "id": "AttNeg-CWA-D2-1002::Q4",
+      "context": "Anne is big. Anne is round. Bob is blue. Bob is red. Bob is young. Dave is big. Dave is blue. Dave is cold. Dave is green. Dave is red. Dave is round. Fiona is blue. Fiona is cold. Fiona is red. Fiona is round. Fiona is young. If someone is cold and red then they are blue. Cold people are blue. All blue, red people are young. All big people are cold. If someone is red then they are big. If someone is young and not cold then they are green.",
+      "question": "Fiona is not big.",
+      "gold_answer": "False",
+      "gold_proof": "From \"Fiona is red\" and the rule \"If someone is red then they are big\", we can conclude Fiona is big.\nThe question asks whether \"Fiona is not big\". The facts and rules entail that Fiona is big, so this claim is false.",
+      "reasoning_depth": 1,
+      "strategy": "inv-proof",
+      "render_meta": {
+        "strategy": "inv-proof",
+        "qdep": 1,
+        "proof_index": 0,
+        "num_alternatives": 1,
+        "num_steps": 1,
+        "conclusion": "Fiona is big."
+      }
+    }
+  ],
+  "prompt_version": "p1-v1",
+  "selection_rule": "fixed_pair_theory_excluded",
+  "excluded_theories": [
+    "AttNeg-CWA-D2-1001",
+    "AttNeg-CWA-D2-1002"
+  ],
+  "created": "2026-09-17T07:01:51.614661+00:00"
+}
