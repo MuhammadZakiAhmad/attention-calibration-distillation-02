@@ -64,17 +64,41 @@ dataset:
   min_qdep: 1
 
 prompt:
-  template_version: p1-v1
+  # p1-v2, 2026-09-17. Bumped from p1-v1 to state the closed-world assumption.
+  #
+  # WHY: 81 of the 500 pool records (16.2%) have a gold proof containing an
+  # explicit NAF (negation-as-failure) step, and for those the negative premise
+  # appears NOWHERE in the context. Verified on AttNeg-CWA-D2-104::Q5: the gold
+  # proof is [(((((triple16 triple15) -> rule1) NAF) -> rule2))], deriving
+  # "Erin is not nice" from the *absence* of "Erin is nice" -- the row's `triples`
+  # table contains no negative triple at all. p1-v1 never licensed that
+  # inference, so both conditions failed these records: zero-shot answered "not
+  # enough information" and the Teacher confabulated a positive fact instead.
+  #
+  # This is a property of the dataset configuration, true of every record, not
+  # information about any particular target -- so it satisfies spec section 44
+  # Rule 2. It is shared by Teacher and Student identically (spec section 10).
+  # Recorded as an explicit prompt change under spec section 24.
+  #
+  # Any generation produced under p1-v1 is superseded and must not be mixed with
+  # p1-v2 output.
+  template_version: p1-v2
   num_demonstrations: 2
-  # The Teacher and the Student use the SAME chat-template mechanism (spec
-  # section 10). Their only difference is the presence of the demonstration
-  # block. The target's gold answer and gold proof NEVER appear in either
-  # prompt (spec section 4, section 44 Rule 2).
+  # p1-v1 for reference (superseded 2026-09-17):
+  #   You solve logical reasoning problems. Given a set of facts and rules, you
+  #   reason step by step and then state a final answer of either True or False.
+  #   Always end your response with a line of the form "Final Answer: True" or
+  #   "Final Answer: False".
   system_message: >-
     You solve logical reasoning problems. Given a set of facts and rules, you
     reason step by step and then state a final answer of either True or False.
-    Always end your response with a line of the form "Final Answer: True" or
-    "Final Answer: False".
+    These problems use the closed-world assumption: a property is false for an
+    entity unless the facts or the rules establish that it is true. If nothing
+    establishes that an entity has a property, treat that entity as not having
+    it, and you may use that negative fact in your reasoning. Every question has
+    a definite answer of True or False, so never respond that the information is
+    insufficient. Always end your response with a line of the form
+    "Final Answer: True" or "Final Answer: False".
 
 generation:
   do_sample: false        # Greedy. Spec section 16 requires every generation to
