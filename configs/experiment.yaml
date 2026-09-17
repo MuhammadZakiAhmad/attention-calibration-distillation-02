@@ -24,6 +24,13 @@ model:
   # the scores must actually be materialised. Flash-attention and SDPA never
   # expose them. Eager applies to the target_layers only; the cost is bounded
   # because the calibrated layers are just the final four.
+  #
+  # CONSUMED BY PHASE 2 AND PHASE 3 ONLY. phase1.py's load_model() reads just
+  # name/revision/dtype/device_map, so this key is deliberately ignored during
+  # Phase 1 generation — there is no calibration to serve, and sdpa is faster.
+  # phase2.py MUST assert this is "eager" at startup: if it silently falls back
+  # to sdpa the calibration module is attached but never consulted, and the run
+  # completes looking successful while testing nothing.
   attn_implementation: eager
 
 dataset:
@@ -135,6 +142,13 @@ training:
 
 evaluation:
   parser_version: p1-parse-v1
+  # Phase 3 runs two arms — original zero-shot vs calibrated zero-shot — and the
+  # calibrated arm requires eager attention (see model.attn_implementation). The
+  # baseline arm must therefore use eager too. sdpa and eager are not
+  # bit-identical, and under greedy decoding a tiny logit difference can flip a
+  # token; a mixed-configuration comparison would attribute that noise to the
+  # method and corrupt the headline number.
+  attn_implementation: eager
   # Split Golden Records by theory ID, not question ID (spec section 18).
   split_by: theory_id
   golden_train_frac: 0.7
